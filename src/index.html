@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Rohrbruch-Ortung</title>
+<style>
+  :root {
+    --bg:      #0a0e13;
+    --bg2:     #111820;
+    --bg3:     #1a2330;
+    --border:  #1e3040;
+    --accent:  #00c8a0;
+    --accent2: #0088ff;
+    --danger:  #ff4455;
+    --warn:    #ffaa00;
+    --text:    #cdd8e8;
+    --text2:   #6a8099;
+    --text3:   #3a5060;
+    --mono:    'Consolas', 'Courier New', monospace;
+    --sans:    'Segoe UI', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 20px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .logo { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: .08em; }
+  .ver  { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+  .header-spacer { flex: 1; }
+  .status-pill {
+    font-family: var(--mono); font-size: 10px;
+    padding: 3px 10px; border-radius: 20px;
+    background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text2);
+  }
+  .status-pill.ok  { border-color: var(--accent);  color: var(--accent); }
+  .status-pill.err { border-color: var(--danger);  color: var(--danger); }
+  .status-pill.run { border-color: var(--warn);    color: var(--warn);   }
+
+  /* ── TABS ── */
+  .tabs {
+    display: flex;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .tab {
+    padding: 9px 20px;
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text3); background: none; border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer; transition: color .15s;
+  }
+  .tab:hover { color: var(--text2); }
+  .tab.aktiv { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ── PAGES ── */
+  .page { display: none; flex: 1; overflow-y: auto; padding: 20px; }
+  .page.aktiv { display: flex; flex-direction: column; gap: 16px; }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .card-title {
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    letter-spacing: .1em; text-transform: uppercase;
+    color: var(--text3); margin-bottom: 14px;
+  }
+
+  /* ── LOAD PAGE ── */
+  .load-row { display: flex; gap: 12px; align-items: stretch; }
+  .btn-load {
+    flex: 1; padding: 20px;
+    background: var(--bg3); border: 1px dashed var(--border);
+    border-radius: 8px; cursor: pointer;
+    font-family: var(--mono); font-size: 12px; color: var(--text2);
+    text-align: center; transition: border-color .15s, color .15s;
+  }
+  .btn-load:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-load .load-icon { font-size: 28px; margin-bottom: 6px; }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .stat { background: var(--bg3); border-radius: 6px; padding: 10px 12px; text-align: center; }
+  .stat-val { font-family: var(--mono); font-size: 15px; font-weight: 700; color: var(--accent); }
+  .stat-lbl { font-size: 10px; color: var(--text3); margin-top: 3px; text-transform: uppercase; letter-spacing: .05em; }
+
+  canvas { display: block; width: 100%; border-radius: 4px; }
+  .cv-wrap { position: relative; }
+  .cv-label {
+    font-family: var(--mono); font-size: 10px; color: var(--text3);
+    margin-bottom: 6px; display: flex; justify-content: space-between;
+  }
+
+  /* ── BUTTONS ── */
+  .btn {
+    padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer;
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase;
+    transition: opacity .15s;
+  }
+  .btn:disabled { opacity: .35; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #0a0e13; }
+  .btn-primary:hover:not(:disabled) { opacity: .85; }
+  .btn-secondary { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
+  .btn-secondary:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+  .btn-danger { background: var(--danger); color: #fff; }
+
+  .action-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+  /* ── FILTER SETTINGS ── */
+  .filter-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .06em; font-family: var(--mono); }
+  .field input[type=number], .field select {
+    background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); padding: 7px 10px; border-radius: 5px;
+    font-family: var(--mono); font-size: 13px;
+  }
+  .field input[type=number]:focus, .field select:focus {
+    outline: none; border-color: var(--accent);
+  }
+
+  /* preset buttons */
+  .preset-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn-preset {
+    padding: 5px 12px; border-radius: 4px;
+    background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text2); font-family: var(--mono); font-size: 10px;
+    cursor: pointer; transition: .15s;
+  }
+  .btn-preset:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-preset.aktiv { border-color: var(--accent); color: var(--accent); background: rgba(0,200,160,.08); }
+
+  /* ── SPECTRUM PAGE ── */
+  #cv-spectrum { height: 260px; }
+  #cv-waveform { height: 100px; }
+  #cv-waveform-raw { height: 100px; }
+
+  /* ── SPECTROGRAM PAGE ── */
+  #cv-spectrogram { height: 340px; }
+
+  /* ── LOG ── */
+  .log {
+    font-family: var(--mono); font-size: 11px; color: var(--text2);
+    background: var(--bg3); border-radius: 5px; padding: 8px 12px;
+    min-height: 32px;
+  }
+  .log .ok  { color: var(--accent); }
+  .log .err { color: var(--danger); }
+  .log .run { color: var(--warn); }
+
+  /* ── PROGRESS ── */
+  .progress-bar {
+    height: 3px; border-radius: 2px;
+    background: var(--bg3); overflow: hidden;
+  }
+  .progress-inner {
+    height: 100%; width: 0%; background: var(--accent);
+    transition: width .2s;
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="logo">ROHRBRUCH-ORTUNG</div>
+  <div class="ver">v2.0 · Win64</div>
+  <div class="header-spacer"></div>
+  <div class="status-pill" id="pill">Keine Datei geladen</div>
+</div>
+
+<!-- TABS -->
+<div class="tabs">
+  <button class="tab aktiv" onclick="showPage('p-laden',this)">Laden</button>
+  <button class="tab" onclick="showPage('p-spektrum',this)">Spektrum</button>
+  <button class="tab" onclick="showPage('p-spektrogramm',this)">Spektrogramm</button>
+  <button class="tab" onclick="showPage('p-einstellungen',this)">Bandpass</button>
+</div>
+
+<!-- ═══════════════ PAGE: LADEN ═══════════════ -->
+<div class="page aktiv" id="p-laden">
+
+  <div class="card">
+    <div class="card-title">Aufnahme laden</div>
+    <div class="load-row">
+      <button class="btn-load" onclick="openFile()">
+        <div class="load-icon">📂</div>
+        WAV / Audio-Datei öffnen
+      </button>
+    </div>
+    <div style="margin-top:10px">
+      <div class="log" id="log">Datei öffnen um zu beginnen.</div>
+    </div>
+  </div>
+
+  <div class="card" id="info-card" style="display:none">
+    <div class="card-title">Datei-Info</div>
+    <div class="stats-grid">
+      <div class="stat"><div class="stat-val" id="st-dauer">—</div><div class="stat-lbl">Dauer</div></div>
+      <div class="stat"><div class="stat-val" id="st-rate">—</div><div class="stat-lbl">Abtastrate</div></div>
+      <div class="stat"><div class="stat-val" id="st-ch">—</div><div class="stat-lbl">Kanäle</div></div>
+      <div class="stat"><div class="stat-val" id="st-size">—</div><div class="stat-lbl">Dateigröße</div></div>
+    </div>
+  </div>
+
+  <div class="card" id="wave-card" style="display:none">
+    <div class="card-title">Original-Wellenform</div>
+    <canvas id="cv-waveform-raw"></canvas>
+  </div>
+
+  <div class="card" id="proc-card" style="display:none">
+    <div class="card-title">Verarbeitung</div>
+    <div class="action-row">
+      <button class="btn btn-primary" id="btn-proc" onclick="verarbeiten()">Bandpass + Normalisieren</button>
+      <button class="btn btn-secondary" id="btn-save" onclick="speichern()" disabled>⬇ WAV speichern</button>
+    </div>
+    <div style="margin-top:10px">
+      <div class="progress-bar"><div class="progress-inner" id="progress"></div></div>
+    </div>
+  </div>
+
+  <div class="card" id="out-card" style="display:none">
+    <div class="card-title">Verarbeitete Wellenform</div>
+    <canvas id="cv-waveform"></canvas>
+  </div>
+
+</div>
+
+<!-- ═══════════════ PAGE: SPEKTRUM ═══════════════ -->
+<div class="page" id="p-spektrum">
+  <div class="card">
+    <div class="card-title">Frequenzspektrum (FFT)</div>
+    <div class="cv-label">
+      <span>Amplitude [dBFS]</span>
+      <span id="spec-info" style="color:var(--accent)"></span>
+    </div>
+    <canvas id="cv-spectrum"></canvas>
+    <div style="margin-top:8px" class="cv-label">
+      <span>0 Hz</span><span id="spec-nyq">— Hz (Nyquist)</span>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Vergleich: Original vs. Gefiltert</div>
+    <canvas id="cv-spec-compare" style="height:200px"></canvas>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE: SPEKTROGRAMM ═══════════════ -->
+<div class="page" id="p-spektrogramm">
+  <div class="card">
+    <div class="card-title">Spektrogramm (Zeit × Frequenz)</div>
+    <div class="cv-label">
+      <span>Frequenz [Hz] ↑</span>
+      <span>Zeit →</span>
+    </div>
+    <canvas id="cv-spectrogram"></canvas>
+    <div style="margin-top:8px" class="cv-label">
+      <span>0 Hz</span>
+      <span id="sg-top-freq">—</span>
+    </div>
+  </div>
+  <div class="card" style="flex-shrink:0">
+    <div class="card-title">Farbskala</div>
+    <canvas id="cv-colorbar" style="height:20px"></canvas>
+    <div class="cv-label" style="margin-top:4px"><span>−80 dBFS</span><span>0 dBFS</span></div>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE: EINSTELLUNGEN ═══════════════ -->
+<div class="page" id="p-einstellungen">
+  <div class="card">
+    <div class="card-title">Bandpass-Presets</div>
+    <div class="preset-row">
+      <button class="btn-preset" onclick="setPreset(20,500,'Gesamt')">20–500 Hz (Gesamt)</button>
+      <button class="btn-preset" onclick="setPreset(20,200,'Tief')">20–200 Hz (Tief)</button>
+      <button class="btn-preset aktiv" onclick="setPreset(50,800,'Standard')">50–800 Hz (Standard)</button>
+      <button class="btn-preset" onclick="setPreset(100,2000,'Mittel')">100–2000 Hz</button>
+      <button class="btn-preset" onclick="setPreset(200,5000,'Hoch')">200–5000 Hz</button>
+      <button class="btn-preset" onclick="setPreset(500,10000,'Ultra')">500–10000 Hz</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Manuell</div>
+    <div class="filter-grid">
+      <div class="field">
+        <label>Untere Grenzfrequenz (Hz)</label>
+        <input type="number" id="f-low" value="50" min="1" max="20000">
+      </div>
+      <div class="field">
+        <label>Obere Grenzfrequenz (Hz)</label>
+        <input type="number" id="f-high" value="800" min="1" max="22000">
+      </div>
+      <div class="field">
+        <label>Filterordnung</label>
+        <select id="f-order">
+          <option value="2">2 (sanft)</option>
+          <option value="4" selected>4 (standard)</option>
+          <option value="6">6 (steil)</option>
+          <option value="8">8 (sehr steil)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Spektrogramm</div>
+    <div class="filter-grid">
+      <div class="field">
+        <label>FFT-Größe</label>
+        <select id="sg-fftsize">
+          <option value="512">512</option>
+          <option value="1024" selected>1024</option>
+          <option value="2048">2048</option>
+          <option value="4096">4096</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Overlap</label>
+        <select id="sg-overlap">
+          <option value="0.5">50%</option>
+          <option value="0.75" selected>75%</option>
+          <option value="0.875">87.5%</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Farbpalette</label>
+        <select id="sg-palette">
+          <option value="inferno">Inferno (Standard)</option>
+          <option value="viridis">Viridis</option>
+          <option value="plasma">Plasma</option>
+          <option value="turbo">Turbo</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════
+let audioCtx = null;
+let rawBuffer = null;       // original AudioBuffer
+let filtBuffer = null;      // processed AudioBuffer
+let fileName = '';
+
+// ═══════════════════════════════════════════════════
+//  UI HELPERS
+// ═══════════════════════════════════════════════════
+function showPage(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('aktiv'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('aktiv'));
+  document.getElementById(id).classList.add('aktiv');
+  btn.classList.add('aktiv');
+  if (id === 'p-spektrum' && filtBuffer) drawSpectrum();
+  if (id === 'p-spektrogramm' && filtBuffer) drawSpectrogram();
+}
+
+function log(msg, cls='') {
+  const el = document.getElementById('log');
+  el.innerHTML = cls ? `<span class="${cls}">${msg}</span>` : msg;
+}
+
+function setPill(msg, cls='') {
+  const p = document.getElementById('pill');
+  p.textContent = msg;
+  p.className = 'status-pill ' + cls;
+}
+
+function setProgress(pct) {
+  document.getElementById('progress').style.width = pct + '%';
+}
+
+function setPreset(lo, hi, name) {
+  document.getElementById('f-low').value = lo;
+  document.getElementById('f-high').value = hi;
+  document.querySelectorAll('.btn-preset').forEach(b => b.classList.remove('aktiv'));
+  event.target.classList.add('aktiv');
+}
+
+// ═══════════════════════════════════════════════════
+//  FILE OPEN  (via Electron native dialog)
+// ═══════════════════════════════════════════════════
+async function openFile() {
+  log('Öffne Dateidialog…', 'run');
+  try {
+    const result = await window.electronAPI.openWavDialog();
+    if (!result) { log('Abgebrochen.'); return; }
+    fileName = result.name;
+    log(`Lade: ${result.name} (${(result.size/1024).toFixed(1)} KB)…`, 'run');
+    setPill('Laden…', 'run');
+
+    if (!audioCtx) audioCtx = new AudioContext();
+
+    // decode base64 → ArrayBuffer
+    const bin = atob(result.data);
+    const ab = new ArrayBuffer(bin.length);
+    const view = new Uint8Array(ab);
+    for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
+
+    rawBuffer = await audioCtx.decodeAudioData(ab);
+
+    // show info
+    document.getElementById('info-card').style.display = '';
+    document.getElementById('wave-card').style.display = '';
+    document.getElementById('proc-card').style.display = '';
+    document.getElementById('st-dauer').textContent = rawBuffer.duration.toFixed(2) + ' s';
+    document.getElementById('st-rate').textContent = rawBuffer.sampleRate + ' Hz';
+    document.getElementById('st-ch').textContent = rawBuffer.numberOfChannels;
+    document.getElementById('st-size').textContent = (result.size/1024).toFixed(1) + ' KB';
+    document.getElementById('spec-nyq').textContent = (rawBuffer.sampleRate/2).toLocaleString('de') + ' Hz (Nyquist)';
+
+    drawWaveform(rawBuffer, 'cv-waveform-raw', '#0088ff');
+    filtBuffer = null;
+    document.getElementById('btn-save').disabled = true;
+    document.getElementById('out-card').style.display = 'none';
+
+    log(`✓ ${result.name} — ${rawBuffer.duration.toFixed(2)} s @ ${rawBuffer.sampleRate} Hz`, 'ok');
+    setPill('Datei geladen', 'ok');
+  } catch(e) {
+    log('Fehler beim Laden: ' + e.message, 'err');
+    setPill('Fehler', 'err');
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  WAVEFORM DRAW
+// ═══════════════════════════════════════════════════
+function drawWaveform(buf, canvasId, color) {
+  const canvas = document.getElementById(canvasId);
+  const W = canvas.offsetWidth || 900;
+  const H = 100;
+  canvas.width = W; canvas.height = H;
+  const ctx2 = canvas.getContext('2d');
+
+  const data = buf.getChannelData(0);
+  const step = Math.ceil(data.length / W);
+
+  ctx2.fillStyle = '#111820';
+  ctx2.fillRect(0,0,W,H);
+
+  // center line
+  ctx2.strokeStyle = '#1e3040';
+  ctx2.lineWidth = 1;
+  ctx2.beginPath(); ctx2.moveTo(0,H/2); ctx2.lineTo(W,H/2); ctx2.stroke();
+
+  ctx2.strokeStyle = color;
+  ctx2.lineWidth = 1;
+  ctx2.globalAlpha = 0.85;
+  ctx2.beginPath();
+  for (let i = 0; i < W; i++) {
+    let min = 1, max = -1;
+    for (let j = 0; j < step; j++) {
+      const v = data[i*step+j] || 0;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    const y1 = (1 - max) / 2 * H;
+    const y2 = (1 - min) / 2 * H;
+    ctx2.moveTo(i, y1);
+    ctx2.lineTo(i, y2);
+  }
+  ctx2.stroke();
+  ctx2.globalAlpha = 1;
+}
+
+// ═══════════════════════════════════════════════════
+//  BUTTERWORTH BANDPASS  (biquad cascade IIR)
+// ═══════════════════════════════════════════════════
+function butterworthBandpass(signal, sampleRate, lowHz, highHz, order) {
+  // Build cascade of 2nd-order sections (order/2 lowpass + order/2 highpass)
+  let out = signal.slice();
+
+  // Simple Butterworth via biquad sections
+  const sections = Math.floor(order / 2);
+  for (let s = 0; s < sections; s++) {
+    // Highpass section
+    out = biquadHighpass(out, sampleRate, lowHz);
+    // Lowpass section
+    out = biquadLowpass(out, sampleRate, highHz);
+  }
+  return out;
+}
+
+function biquadLowpass(x, fs, fc) {
+  const omega = 2 * Math.PI * fc / fs;
+  const cosOmega = Math.cos(omega);
+  const sinOmega = Math.sin(omega);
+  const alpha = sinOmega / (2 * 0.7071); // Q = 1/sqrt(2)
+  const b0 = (1 - cosOmega) / 2;
+  const b1 = 1 - cosOmega;
+  const b2 = (1 - cosOmega) / 2;
+  const a0 = 1 + alpha;
+  const a1 = -2 * cosOmega;
+  const a2 = 1 - alpha;
+  return biquadFilter(x, b0/a0, b1/a0, b2/a0, a1/a0, a2/a0);
+}
+
+function biquadHighpass(x, fs, fc) {
+  const omega = 2 * Math.PI * fc / fs;
+  const cosOmega = Math.cos(omega);
+  const sinOmega = Math.sin(omega);
+  const alpha = sinOmega / (2 * 0.7071);
+  const b0 = (1 + cosOmega) / 2;
+  const b1 = -(1 + cosOmega);
+  const b2 = (1 + cosOmega) / 2;
+  const a0 = 1 + alpha;
+  const a1 = -2 * cosOmega;
+  const a2 = 1 - alpha;
+  return biquadFilter(x, b0/a0, b1/a0, b2/a0, a1/a0, a2/a0);
+}
+
+function biquadFilter(x, b0, b1, b2, a1, a2) {
+  const y = new Float32Array(x.length);
+  let x1=0, x2=0, y1=0, y2=0;
+  for (let i = 0; i < x.length; i++) {
+    const xi = x[i];
+    const yi = b0*xi + b1*x1 + b2*x2 - a1*y1 - a2*y2;
+    x2=x1; x1=xi; y2=y1; y1=yi;
+    y[i] = yi;
+  }
+  return y;
+}
+
+// ═══════════════════════════════════════════════════
+//  VERARBEITEN
+// ═══════════════════════════════════════════════════
+async function verarbeiten() {
+  if (!rawBuffer) { log('Keine Datei geladen.', 'err'); return; }
+
+  const lowHz  = parseInt(document.getElementById('f-low').value);
+  const highHz = parseInt(document.getElementById('f-high').value);
+  const order  = parseInt(document.getElementById('f-order').value);
+
+  if (lowHz >= highHz) { log('Untere Grenzfrequenz muss kleiner als obere sein.', 'err'); return; }
+
+  log(`Verarbeite… Bandpass ${lowHz}–${highHz} Hz (Butterworth Ord. ${order})`, 'run');
+  setPill('Verarbeite…', 'run');
+  setProgress(10);
+
+  // run in next tick so UI updates
+  await new Promise(r => setTimeout(r, 20));
+
+  try {
+    const sr = rawBuffer.sampleRate;
+    const ch = rawBuffer.numberOfChannels;
+
+    // new AudioBuffer for output
+    filtBuffer = new AudioBuffer({
+      numberOfChannels: ch,
+      length: rawBuffer.length,
+      sampleRate: sr
+    });
+
+    for (let c = 0; c < ch; c++) {
+      setProgress(10 + (c+1)/ch * 60);
+      let data = rawBuffer.getChannelData(c);
+
+      // DC-Offset entfernen
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) sum += data[i];
+      const dc = sum / data.length;
+      const dcRemoved = new Float32Array(data.length);
+      for (let i = 0; i < data.length; i++) dcRemoved[i] = data[i] - dc;
+
+      // Bandpass anwenden
+      const filtered = butterworthBandpass(dcRemoved, sr, lowHz, highHz, order);
+
+      setProgress(70 + (c+1)/ch * 20);
+      await new Promise(r => setTimeout(r, 5));
+
+      // Normalisieren
+      let peak = 0;
+      for (let i = 0; i < filtered.length; i++) {
+        if (Math.abs(filtered[i]) > peak) peak = Math.abs(filtered[i]);
+      }
+      const norm = peak > 0 ? 0.95 / peak : 1;
+      const normalized = new Float32Array(filtered.length);
+      for (let i = 0; i < filtered.length; i++) normalized[i] = filtered[i] * norm;
+
+      filtBuffer.copyToChannel(normalized, c);
+    }
+
+    setProgress(100);
+    document.getElementById('out-card').style.display = '';
+    drawWaveform(filtBuffer, 'cv-waveform', '#00c8a0');
+    document.getElementById('btn-save').disabled = false;
+
+    log(`✓ Fertig — Bandpass ${lowHz}–${highHz} Hz angewendet, normalisiert.`, 'ok');
+    setPill('Bereit', 'ok');
+
+    // auto-draw spectrum if on that tab
+    if (document.getElementById('p-spektrum').classList.contains('aktiv')) drawSpectrum();
+    if (document.getElementById('p-spektrogramm').classList.contains('aktiv')) drawSpectrogram();
+
+  } catch(e) {
+    log('Fehler: ' + e.message, 'err');
+    setPill('Fehler', 'err');
+    setProgress(0);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  FFT  (Cooley-Tukey radix-2)
+// ═══════════════════════════════════════════════════
+function fft(re, im) {
+  const N = re.length;
+  // bit-reversal
+  let j = 0;
+  for (let i = 1; i < N; i++) {
+    let bit = N >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      [re[i],re[j]] = [re[j],re[i]];
+      [im[i],im[j]] = [im[j],im[i]];
+    }
+  }
+  // butterfly
+  for (let len = 2; len <= N; len <<= 1) {
+    const ang = -2 * Math.PI / len;
+    const wRe = Math.cos(ang), wIm = Math.sin(ang);
+    for (let i = 0; i < N; i += len) {
+      let curRe = 1, curIm = 0;
+      for (let k = 0; k < len/2; k++) {
+        const uRe = re[i+k], uIm = im[i+k];
+        const vRe = re[i+k+len/2]*curRe - im[i+k+len/2]*curIm;
+        const vIm = re[i+k+len/2]*curIm + im[i+k+len/2]*curRe;
+        re[i+k] = uRe+vRe; im[i+k] = uIm+vIm;
+        re[i+k+len/2] = uRe-vRe; im[i+k+len/2] = uIm-vIm;
+        const newRe = curRe*wRe - curIm*wIm;
+        curIm = curRe*wIm + curIm*wRe;
+        curRe = newRe;
+      }
+    }
+  }
+}
+
+function computeSpectrum(buffer, fftSize) {
+  const data = buffer.getChannelData(0);
+  // hann window
+  const N = fftSize;
+  const re = new Float64Array(N);
+  const im = new Float64Array(N);
+  const start = Math.max(0, Math.floor(data.length/2) - N/2);
+  for (let i = 0; i < N; i++) {
+    const w = 0.5 * (1 - Math.cos(2*Math.PI*i/(N-1)));
+    re[i] = (data[start+i] || 0) * w;
+  }
+  fft(re, im);
+  const mag = new Float32Array(N/2);
+  for (let i = 0; i < N/2; i++) {
+    mag[i] = Math.sqrt(re[i]*re[i] + im[i]*im[i]) / N;
+  }
+  return mag;
+}
+
+// ═══════════════════════════════════════════════════
+//  SPECTRUM DRAW
+// ═══════════════════════════════════════════════════
+function drawSpectrum() {
+  const canvas = document.getElementById('cv-spectrum');
+  const W = canvas.offsetWidth || 900;
+  const H = 260;
+  canvas.width = W; canvas.height = H;
+  const ctx2 = canvas.getContext('2d');
+
+  const fftSize = 8192;
+  const sr = filtBuffer.sampleRate;
+
+  ctx2.fillStyle = '#0d1520';
+  ctx2.fillRect(0,0,W,H);
+
+  // grid
+  ctx2.strokeStyle = '#1e3040'; ctx2.lineWidth = 1;
+  for (let db = -80; db <= 0; db += 20) {
+    const y = H - ((db + 80) / 80) * (H-20) - 10;
+    ctx2.beginPath(); ctx2.moveTo(0,y); ctx2.lineTo(W,y); ctx2.stroke();
+    ctx2.fillStyle = '#3a5060'; ctx2.font = '9px Consolas';
+    ctx2.fillText(db + ' dB', 3, y-2);
+  }
+
+  function drawSpecLine(buf, color, alpha) {
+    const mag = computeSpectrum(buf, fftSize);
+    ctx2.strokeStyle = color; ctx2.lineWidth = 1.5;
+    ctx2.globalAlpha = alpha;
+    ctx2.beginPath();
+    for (let i = 1; i < mag.length; i++) {
+      const freq = i / mag.length * sr / 2;
+      const x = Math.log10(freq / 1) / Math.log10(sr/2) * W;
+      const db = 20 * Math.log10(mag[i] + 1e-9);
+      const y = H - ((db + 80) / 80) * (H-20) - 10;
+      if (i === 1) ctx2.moveTo(x, y); else ctx2.lineTo(x, y);
+    }
+    ctx2.stroke();
+    ctx2.globalAlpha = 1;
+  }
+
+  if (rawBuffer) drawSpecLine(rawBuffer, '#0088ff', 0.5);
+  drawSpecLine(filtBuffer, '#00c8a0', 0.95);
+
+  // legend
+  ctx2.font = '10px Consolas';
+  ctx2.fillStyle = '#0088ff'; ctx2.fillText('▬ Original', W-150, 16);
+  ctx2.fillStyle = '#00c8a0'; ctx2.fillText('▬ Gefiltert', W-150, 29);
+
+  // freq axis labels (log scale)
+  [10,20,50,100,200,500,1000,2000,5000,10000].forEach(f => {
+    if (f > sr/2) return;
+    const x = Math.log10(f/1) / Math.log10(sr/2) * W;
+    ctx2.strokeStyle = '#1a2a3a'; ctx2.lineWidth = 1;
+    ctx2.beginPath(); ctx2.moveTo(x,0); ctx2.lineTo(x,H); ctx2.stroke();
+    ctx2.fillStyle = '#3a5060'; ctx2.font = '9px Consolas';
+    ctx2.fillText(f >= 1000 ? (f/1000)+'k' : f, x+2, H-2);
+  });
+
+  document.getElementById('spec-info').textContent =
+    `${filtBuffer.duration.toFixed(2)}s @ ${sr}Hz`;
+}
+
+// also draw compare
+function drawSpectrumCompare() {
+  if (!filtBuffer || !rawBuffer) return;
+  const canvas = document.getElementById('cv-spec-compare');
+  const W = canvas.offsetWidth || 900;
+  const H = 200;
+  canvas.width = W; canvas.height = H;
+  const ctx2 = canvas.getContext('2d');
+  ctx2.fillStyle = '#0d1520';
+  ctx2.fillRect(0,0,W,H);
+
+  const fftSize = 4096;
+  const sr = rawBuffer.sampleRate;
+  const magRaw  = computeSpectrum(rawBuffer, fftSize);
+  const magFilt = computeSpectrum(filtBuffer, fftSize);
+
+  // fill between
+  const pts = [];
+  for (let i = 1; i < magRaw.length; i++) {
+    const freq = i / magRaw.length * sr / 2;
+    const x = Math.log10(freq) / Math.log10(sr/2) * W;
+    const dbR = 20 * Math.log10(magRaw[i] + 1e-9);
+    const dbF = 20 * Math.log10(magFilt[i] + 1e-9);
+    const yR = H - ((dbR + 80) / 80) * (H-10);
+    const yF = H - ((dbF + 80) / 80) * (H-10);
+    pts.push({x, yR, yF});
+  }
+
+  // removed region (fill)
+  ctx2.fillStyle = 'rgba(255,68,85,0.15)';
+  ctx2.beginPath();
+  pts.forEach((p,i) => i===0 ? ctx2.moveTo(p.x, p.yR) : ctx2.lineTo(p.x, p.yR));
+  for (let i = pts.length-1; i >= 0; i--) ctx2.lineTo(pts[i].x, pts[i].yF);
+  ctx2.closePath(); ctx2.fill();
+
+  // lines
+  function drawLine(pts, key, col) {
+    ctx2.strokeStyle = col; ctx2.lineWidth = 1.5;
+    ctx2.beginPath();
+    pts.forEach((p,i) => i===0 ? ctx2.moveTo(p.x, p[key]) : ctx2.lineTo(p.x, p[key]));
+    ctx2.stroke();
+  }
+  drawLine(pts, 'yR', '#336699');
+  drawLine(pts, 'yF', '#00c8a0');
+
+  ctx2.fillStyle = '#ff4455'; ctx2.font = '9px Consolas';
+  ctx2.fillText('Rot: entfernte Frequenzen', W-160, 14);
+}
+
+// ═══════════════════════════════════════════════════
+//  SPECTROGRAM
+// ═══════════════════════════════════════════════════
+const PALETTES = {
+  inferno: [[0,0,4],[40,11,84],[101,21,110],[159,42,99],[212,72,66],[245,125,21],[252,188,97],[252,255,164]],
+  viridis: [[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37],[253,231,37]],
+  plasma:  [[13,8,135],[126,3,168],[204,71,120],[248,149,64],[240,249,33]],
+  turbo:   [[48,18,59],[86,100,210],[29,223,164],[204,244,61],[228,56,19]]
+};
+
+function paletteLookup(t, name) {
+  const pal = PALETTES[name] || PALETTES.inferno;
+  const idx = t * (pal.length-1);
+  const lo  = Math.floor(idx), hi = Math.min(lo+1, pal.length-1);
+  const f   = idx - lo;
+  return [
+    pal[lo][0] + (pal[hi][0]-pal[lo][0])*f,
+    pal[lo][1] + (pal[hi][1]-pal[lo][1])*f,
+    pal[lo][2] + (pal[hi][2]-pal[lo][2])*f
+  ];
+}
+
+function drawSpectrogram() {
+  const canvas = document.getElementById('cv-spectrogram');
+  const W = canvas.offsetWidth || 900;
+  const H = 340;
+  canvas.width = W; canvas.height = H;
+  const ctx2 = canvas.getContext('2d');
+
+  const fftSize   = parseInt(document.getElementById('sg-fftsize').value);
+  const overlap   = parseFloat(document.getElementById('sg-overlap').value);
+  const palette   = document.getElementById('sg-palette').value;
+  const hopSize   = Math.floor(fftSize * (1 - overlap));
+  const sr        = filtBuffer.sampleRate;
+  const data      = filtBuffer.getChannelData(0);
+  const numFrames = Math.floor((data.length - fftSize) / hopSize);
+
+  // hann window
+  const win = new Float32Array(fftSize);
+  for (let i = 0; i < fftSize; i++) win[i] = 0.5*(1-Math.cos(2*Math.PI*i/(fftSize-1)));
+
+  // compute all frames → dB matrix
+  const freqBins = fftSize/2;
+  const matrix   = [];
+
+  for (let f = 0; f < numFrames; f++) {
+    const re = new Float64Array(fftSize);
+    const im = new Float64Array(fftSize);
+    const off = f * hopSize;
+    for (let i = 0; i < fftSize; i++) re[i] = (data[off+i]||0) * win[i];
+    fft(re, im);
+    const row = new Float32Array(freqBins);
+    for (let i = 0; i < freqBins; i++) {
+      const mag = Math.sqrt(re[i]*re[i]+im[i]*im[i]) / fftSize;
+      row[i] = 20 * Math.log10(mag + 1e-9);
+    }
+    matrix.push(row);
+  }
+
+  // render
+  const imgData = ctx2.createImageData(W, H);
+  const px = imgData.data;
+  const DB_MIN = -80, DB_MAX = 0;
+
+  for (let x = 0; x < W; x++) {
+    const fi = Math.floor(x / W * matrix.length);
+    const row = matrix[fi];
+    if (!row) continue;
+    for (let y = 0; y < H; y++) {
+      const freq_idx = Math.floor((1 - y/H) * freqBins);
+      const db = row[Math.min(freq_idx, freqBins-1)];
+      const t  = Math.max(0, Math.min(1, (db - DB_MIN) / (DB_MAX - DB_MIN)));
+      const [r,g,b] = paletteLookup(t, palette);
+      const idx = (y*W+x)*4;
+      px[idx]=r; px[idx+1]=g; px[idx+2]=b; px[idx+3]=255;
+    }
+  }
+  ctx2.putImageData(imgData, 0, 0);
+
+  // freq labels
+  ctx2.fillStyle = 'rgba(0,0,0,0.6)';
+  [100,200,500,1000,2000,5000,10000].forEach(f => {
+    if (f > sr/2) return;
+    const y = H - f/(sr/2)*H;
+    ctx2.strokeStyle='rgba(255,255,255,0.2)'; ctx2.lineWidth=1;
+    ctx2.beginPath(); ctx2.moveTo(0,y); ctx2.lineTo(W,y); ctx2.stroke();
+    ctx2.fillStyle='rgba(255,255,255,0.5)'; ctx2.font='9px Consolas';
+    ctx2.fillText(f>=1000 ? (f/1000)+'kHz' : f+'Hz', 4, y-2);
+  });
+
+  document.getElementById('sg-top-freq').textContent = (sr/2/1000).toFixed(1) + ' kHz';
+  drawColorbar(palette);
+}
+
+function drawColorbar(palette) {
+  const canvas = document.getElementById('cv-colorbar');
+  const W = canvas.offsetWidth || 900;
+  const H = 20;
+  canvas.width = W; canvas.height = H;
+  const ctx2 = canvas.getContext('2d');
+  for (let x = 0; x < W; x++) {
+    const [r,g,b] = paletteLookup(x/W, palette);
+    ctx2.fillStyle = `rgb(${r},${g},${b})`;
+    ctx2.fillRect(x,0,1,H);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  WAV EXPORT
+// ═══════════════════════════════════════════════════
+function encodeWav(buffer) {
+  const ch  = buffer.numberOfChannels;
+  const sr  = buffer.sampleRate;
+  const len = buffer.length;
+  const bps = 16;
+  const byteLen = len * ch * (bps/8);
+  const ab = new ArrayBuffer(44 + byteLen);
+  const view = new DataView(ab);
+
+  function str(off, s) { for (let i=0;i<s.length;i++) view.setUint8(off+i, s.charCodeAt(i)); }
+  function u16(off,v) { view.setUint16(off,v,true); }
+  function u32(off,v) { view.setUint32(off,v,true); }
+
+  str(0,'RIFF'); u32(4, 36+byteLen);
+  str(8,'WAVE'); str(12,'fmt '); u32(16,16);
+  u16(20,1); u16(22,ch); u32(24,sr); u32(28,sr*ch*(bps/8));
+  u16(32,ch*(bps/8)); u16(34,bps);
+  str(36,'data'); u32(40,byteLen);
+
+  const channelData = [];
+  for (let c=0;c<ch;c++) channelData.push(buffer.getChannelData(c));
+
+  let off = 44;
+  for (let i=0;i<len;i++) {
+    for (let c=0;c<ch;c++) {
+      let s = Math.max(-1, Math.min(1, channelData[c][i]));
+      view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      off += 2;
+    }
+  }
+  return ab;
+}
+
+async function speichern() {
+  if (!filtBuffer) { log('Zuerst verarbeiten!', 'err'); return; }
+  log('Öffne Speichern-Dialog…', 'run');
+
+  const ab = encodeWav(filtBuffer);
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(ab)));
+  const suggested = fileName.replace(/\.[^.]+$/, '') + '_gefiltert.wav';
+
+  const savedPath = await window.electronAPI.saveWavDialog(base64, suggested);
+  if (savedPath) {
+    log(`✓ Gespeichert: ${savedPath}`, 'ok');
+    setPill('Gespeichert', 'ok');
+  } else {
+    log('Speichern abgebrochen.', '');
+  }
+}
+
+// auto-redraw on tab switch handles in showPage()
+// also redraw compare when spectrum tab is shown
+const origShowPage = showPage;
+window.showPage = function(id, btn) {
+  origShowPage(id, btn);
+  if (id === 'p-spektrum' && filtBuffer) {
+    setTimeout(() => { drawSpectrum(); drawSpectrumCompare(); }, 50);
+  }
+  if (id === 'p-spektrogramm' && filtBuffer) {
+    setTimeout(() => drawSpectrogram(), 50);
+  }
+};
+</script>
+</body>
+</html>
