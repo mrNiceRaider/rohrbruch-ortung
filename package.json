@@ -1,0 +1,37 @@
+{
+  "name": "rohrbruch-ortung",
+  "version": "2.0.0",
+  "description": "Rohrbruch-Ortung – Akustische Leckanalyse",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build-win": "electron-builder --win --x64"
+  },
+  "build": {
+    "appId": "de.rohrbruch.ortung",
+    "productName": "Rohrbruch-Ortung",
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "src/icon.ico"
+    },
+    "portable": {
+      "artifactName": "Rohrbruch-Ortung.exe"
+    },
+    "files": [
+      "src/**/*"
+    ],
+    "asar": true
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.0.1",
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  }
+}
